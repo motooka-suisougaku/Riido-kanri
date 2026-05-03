@@ -2,194 +2,132 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>幻想図書館の記憶</title>
+    <title>3D Cyber Runner</title>
     <style>
-        :root {
-            --bg-color: #121212;
-            --text-color: #e0e0e0;
-            --accent-color: #d4af37; /* Gold */
-            --box-bg: #1e1e1e;
-        }
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            font-family: "Yu Mincho", "MS Mincho", serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        #game-container {
-            width: 80%;
-            max-width: 700px;
-            background: var(--box-bg);
-            padding: 40px;
-            border-radius: 8px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            border: 1px solid #333;
-        }
-        #scene-image {
-            font-size: 40px;
-            text-align: center;
-            margin-bottom: 20px;
-            opacity: 0.8;
-        }
-        #text-display {
-            font-size: 1.1rem;
-            line-height: 1.8;
-            margin-bottom: 30px;
-            min-height: 120px;
-            white-space: pre-wrap;
-        }
-        .choices {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .choice-btn {
-            background: transparent;
-            border: 1px solid var(--accent-color);
-            color: var(--accent-color);
-            padding: 12px 20px;
-            cursor: pointer;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            text-align: left;
-            border-radius: 4px;
-        }
-        .choice-btn:hover {
-            background: var(--accent-color);
-            color: #000;
-        }
-        #inventory {
-            margin-top: 30px;
-            font-size: 0.9rem;
-            color: #888;
-            border-top: 1px solid #333;
-            padding-top: 10px;
-        }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Arial', sans-serif; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #0ff; font-size: 24px; pointer-events: none; }
+        #msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+               color: #f0f; font-size: 48px; text-align: center; display: none; cursor: pointer; }
     </style>
 </head>
 <body>
+    <div id="ui">Score: <span id="score">0</span></div>
+    <div id="msg">GAME OVER<br><span style="font-size:24px">Click to Restart</span></div>
 
-<div id="game-container">
-    <div id="scene-image">📖</div>
-    <div id="text-display"></div>
-    <div id="choice-area" class="choices"></div>
-    <div id="inventory">所持品: なし</div>
-</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
 
-<script>
-    const textDisplay = document.getElementById('text-display');
-    const choiceArea = document.getElementById('choice-area');
-    const inventoryDisplay = document.getElementById('inventory');
-    const sceneIcon = document.getElementById('scene-image');
+    <script type="module">
+        import * as THREE from 'three';
 
-    let state = {
-        hasKey: false,
-        readBook: false,
-        inventory: []
-    };
+        let scene, camera, renderer, player, obstacles = [];
+        let score = 0;
+        let isGameOver = false;
+        let speed = 0.5;
 
-    const story = {
-        start: {
-            icon: "🕯️",
-            text: "目が覚めると、見知らぬ図書館にいた。\n壁一面の本棚には、背表紙のない本が並んでいる。\n正面には重厚な扉、右側には机がある。",
-            choices: [
-                { text: "扉を調べる", next: "door" },
-                { text: "机の上を見る", next: "desk" },
-                { text: "本棚を眺める", next: "bookshelf" }
-            ]
-        },
-        door: {
-            icon: "🚪",
-            text: () => state.hasKey ? "黄金の鍵を差し込むと、扉は静かに開いた。外からは暖かい光が差し込んでいる。" : "扉には鍵がかかっている。鍵穴は黄金色に輝いている。",
-            choices: () => state.hasKey 
-                ? [{ text: "光の中へ歩き出す（エンディングへ）", next: "ending" }]
-                : [{ text: "戻る", next: "start" }]
-        },
-        desk: {
-            icon: "✍️",
-            text: "古い木製の机だ。引き出しが一つある。",
-            choices: [
-                { text: "引き出しを開ける", next: "drawer" },
-                { text: "戻る", next: "start" }
-            ]
-        },
-        drawer: {
-            icon: "🗝️",
-            text: () => state.hasKey ? "引き出しは空っぽだ。" : "引き出しの中には「黄金の鍵」が入っていた。これなら扉を開けられるかもしれない。",
-            action: () => { 
-                if(!state.hasKey) {
-                    state.hasKey = true;
-                    state.inventory.push("黄金の鍵");
-                }
-            },
-            choices: [{ text: "戻る", next: "start" }]
-        },
-        bookshelf: {
-            icon: "📚",
-            text: "一冊だけ、タイトルのある本を見つけた。\n『忘れられた言葉』と書かれている。",
-            choices: [
-                { text: "本を読む", next: "read" },
-                { text: "戻る", next: "start" }
-            ]
-        },
-        read: {
-            icon: "📖",
-            text: "「光を求める者は、まず足元を照らせ」\n…何かのヒントだろうか？",
-            action: () => { state.readBook = true; },
-            choices: [{ text: "戻る", next: "start" }]
-        },
-        ending: {
-            icon: "✨",
-            text: "あなたは図書館を後にした。\n心地よい風が吹き、自分が誰だったのかを思い出す。\n\n―― おめでとう。あなたは脱出に成功しました。",
-            choices: [{ text: "最初から遊ぶ", next: "start", reset: true }]
-        }
-    };
+        // 初期化
+        function init() {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0x000000, 10, 50);
 
-    function updateInventory() {
-        inventoryDisplay.innerText = "所持品: " + (state.inventory.length > 0 ? state.inventory.join(", ") : "なし");
-    }
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 2, 5);
 
-    function renderScene(sceneId) {
-        const scene = story[sceneId];
-        
-        // リセット処理
-        if (sceneId === 'start' && !state.hasKey && state.inventory.length > 0) {
-            state = { hasKey: false, readBook: false, inventory: [] };
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // 自機（プレイヤー）
+            const geo = new THREE.ConeGeometry(0.4, 1, 3);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true });
+            player = new THREE.Mesh(geo, mat);
+            player.rotation.x = Math.PI / 2;
+            player.position.y = 0.5;
+            scene.add(player);
+
+            // 地面（グリッド）
+            const grid = new THREE.GridHelper(200, 50, 0xff00ff, 0x444444);
+            scene.add(grid);
+
+            // ライト
+            const light = new THREE.PointLight(0xffffff, 100);
+            light.position.set(0, 5, 5);
+            scene.add(light);
+
+            window.addEventListener('resize', onWindowResize);
+            document.addEventListener('keydown', handleInput);
+            document.getElementById('msg').addEventListener('click', resetGame);
+
+            spawnObstacle();
+            animate();
         }
 
-        // テキストとアイコンの更新
-        sceneIcon.innerText = scene.icon;
-        textDisplay.innerText = typeof scene.text === 'function' ? scene.text() : scene.text;
-        
-        // アクション実行
-        if (scene.action) scene.action();
-        updateInventory();
+        function handleInput(e) {
+            if (isGameOver) return;
+            if (e.key === 'ArrowLeft' && player.position.x > -4) player.position.x -= 2;
+            if (e.key === 'ArrowRight' && player.position.x < 4) player.position.x += 2;
+        }
 
-        // 選択肢の生成
-        choiceArea.innerHTML = '';
-        const choices = typeof scene.choices === 'function' ? scene.choices() : scene.choices;
-        
-        choices.forEach(c => {
-            const btn = document.createElement('button');
-            btn.className = 'choice-btn';
-            btn.innerText = c.text;
-            btn.onclick = () => {
-                if (c.reset) {
-                    state = { hasKey: false, readBook: false, inventory: [] };
+        function spawnObstacle() {
+            if (isGameOver) return;
+            const geo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xff0066, wireframe: true });
+            const box = new THREE.Mesh(geo, mat);
+            
+            box.position.set((Math.floor(Math.random() * 5) - 2) * 2, 0.75, -50);
+            scene.add(box);
+            obstacles.push(box);
+
+            setTimeout(spawnObstacle, Math.max(200, 1000 - score * 2));
+        }
+
+        function animate() {
+            if (isGameOver) return;
+            requestAnimationFrame(animate);
+
+            // スコアと速度の上昇
+            score++;
+            speed += 0.0001;
+            document.getElementById('score').innerText = score;
+
+            // 障害物の移動と判定
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                obstacles[i].position.z += speed;
+
+                // 当たり判定
+                if (obstacles[i].position.z > 4 && obstacles[i].position.z < 6) {
+                    if (Math.abs(obstacles[i].position.x - player.position.x) < 1) {
+                        endGame();
+                    }
                 }
-                renderScene(c.next);
-            };
-            choiceArea.appendChild(btn);
-        });
-    }
 
-    // 初回起動
-    renderScene('start');
-</script>
+                // 画面外に出たら削除
+                if (obstacles[i].position.z > 10) {
+                    scene.remove(obstacles[i]);
+                    obstacles.splice(i, 1);
+                }
+            }
 
+            renderer.render(scene, camera);
+        }
+
+        function endGame() {
+            isGameOver = true;
+            document.getElementById('msg').style.display = 'block';
+        }
+
+        function resetGame() {
+            location.reload();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        init();
+    </script>
 </body>
 </html>
